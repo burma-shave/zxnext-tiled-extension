@@ -1,5 +1,4 @@
 /// <reference types="@mapeditor/tiled-api" />
-import bitwise from "bitwise";
 import * as _ from "lodash";
 import extract from "png-chunks-extract";
 import pako from "pako";
@@ -20,7 +19,7 @@ type MetaTileSpec = {
 };
 
 const exportMap = (map, fileName) => {
-  const file = new TextFile(fileName, TextFile.WriteOnly);
+  const file = new BinaryFile(fileName, BinaryFile.WriteOnly);
 
   const metatTileMap: MetaTileSpec[] = [];
   tiled.log("Map height: " + map.height);
@@ -60,19 +59,13 @@ const exportMap = (map, fileName) => {
             metaTileColumn < metaTileFactor;
             metaTileColumn++
           ) {
-            const tile = tileLayer.tileAt(i, j);
-
-            if (!tile) {
-              tiled.log("No tile found at " + i + ", " + j);
-            }
-
             const cell = tileLayer.cellAt(i, j);
 
             //@ts-ignore
             //const rect = tile?.imageRect as rect;
 
-            const tiledTileId = tileLayer.tileAt(i, j)?.id;
-            let tileId = tiledTileId;
+            const tile = tileLayer.tileAt(i, j);
+            const tileId = tile ? tile.id : 0;
 
             // TODO: convert tileId into tileattribute index, assume 1 tileset per layer
 
@@ -99,9 +92,30 @@ const exportMap = (map, fileName) => {
     return "No tile layers found.";
   }
 
-  // metaTileMap -> binry
+  const data = [];
+  metatTileMap.forEach((mt) => {
+    let attributes =
+      (mt.xMirror ? 8 : 0) | (mt.yMirror ? 4 : 0) | (mt.rotate ? 2 : 0) | 0;
 
-  file.writeLine(JSON.stringify(metatTileMap));
+    // const highByteBits: Byte = [
+    //   0, // top four bits - palette offset
+    //   0,
+    //   0,
+    //   0,
+    //   0,
+    //   0,
+    //   0,
+    //   0, // ULA Mode - 1 is on top if ULA
+    // ];
+    //data.push(mt.tileId);
+    data.push(mt.tileId);
+    data.push(attributes);
+    //data.push(0);
+  });
+
+  const tileDataBuffer = new Uint8Array(data);
+
+  file.write(tileDataBuffer.buffer);
   file.commit();
   return null;
 };
@@ -182,8 +196,8 @@ const exportTileSet = (tileset, filename) => {
   // The ZX Next layer 3 tile format is 4 bits per pixel so 16 colours
   // Two pixles are packed into a single byte, the first pixel is in the
   // lower 4 bits and the second pixel is in the upper 4 bits.
-  const evenPixels = normalizedTileData.filter((_, i) => i % 2 !== 0);
-  const oddPixels = normalizedTileData.filter((_, i) => i % 2 === 0);
+  const evenPixels = normalizedTileData.filter((_, i) => i % 2 === 0);
+  const oddPixels = normalizedTileData.filter((_, i) => i % 2 !== 0);
 
   tiled.log("oddPixels length: " + oddPixels.length);
   tiled.log("evenPixels length: " + evenPixels.length);
@@ -274,12 +288,12 @@ const subTileReadOffsets = (tileset: Tileset) => {
 
 tiled.registerTilesetFormat("next", {
   name: "ZX Next Layer 3 Tileset",
-  extension: "bin",
+  extension: "tls",
   write: exportTileSet,
 });
 
 tiled.registerMapFormat("next", {
   name: "ZX Next Layer 3 Tilemap",
-  extension: "json",
+  extension: "map",
   write: exportMap,
 });
